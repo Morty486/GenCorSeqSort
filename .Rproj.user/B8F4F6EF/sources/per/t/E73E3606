@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1608942394844.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "4274116881",
+    "id" : "E73E3606",
+    "lastKnownWriteTime" : 1608786812,
+    "last_content_update" : 1608786812,
+    "path" : "~/Box/GSC_Trivariate/TriPackage/GenCorSeqSort/R/Check.TriBounds.R",
+    "project_path" : "R/Check.TriBounds.R",
+    "properties" : {
+        "cursorPosition" : "33,6",
+        "scrollLine" : "26"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

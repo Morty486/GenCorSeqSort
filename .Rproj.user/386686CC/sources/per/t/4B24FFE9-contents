@@ -1,0 +1,350 @@
+install.packages("matrixcalc")
+library(matrixcalc) # check psd package
+
+
+# New function RankSort
+# Sort sequence 2 according to the rank of sequence 1 (when there are ties, it will be sort in an increasing/decreasing order)
+Rank.Sort = function(seq1, seq2, sort_part, cor) {
+  if (cor > 0) {
+    seq2[sort_part] = sort(seq2[sort_part])[rank(seq1[sort_part], ties.method = "first")]
+  }else{
+    seq2[sort_part] = rev(sort(seq2[sort_part]))[rank(seq1[sort_part], ties.method = "first")]
+  }
+  return(seq2)
+}
+
+
+# correlation name to order of variable (1,2) (1,3) (2,3) -> 1, 2 ,3
+# (1,2) (2,3) (1,3) -> 2,1,3
+name_to_order = function(name) {
+  indices = unique(as.vector(name))
+  ans = intersect(name[1, ], name[2, ])
+  ans = c(ans, setdiff(name[1, ], ans))
+  ans = c(ans, setdiff(indices, ans))
+  ans
+}
+
+
+# Compute lower and upper bounds of correaltions for each pair of variables
+# Input list of functions to generate RVs
+# Output list of (lower bounds, upper bounds)
+Compute.PairBounds = function(lst){
+  n = 10^6
+  dim = length(lst)
+  low_bdd = matrix(0, dim, dim)
+  up_bdd = matrix(0, dim, dim)
+  for (i in 1:(dim - 1)) {
+    for (j in (i+1):dim) {
+      x = lst[[i]](n)
+      y = lst[[j]](n)
+      low_bdd[i, j] = cor(x[order(x)], rev(y[order(y)]))
+      up_bdd[i, j] = cor(x[order(x)], y[order(y)])
+    }
+  }
+  low_bdd = low_bdd + t(low_bdd) + diag(1, dim)
+  up_bdd = up_bdd + t(up_bdd) + diag(1, dim)
+  list(low_bdd = low_bdd, up_bdd = up_bdd)
+}
+
+
+# Compute the sorted proportion to create correlation for each pair of variables
+# output sort proportion (ex. 3 variable proportion for (1,2), (1,3), (2,3))
+Compute.SortProp = function(cor_mat, pairbounds) {
+  low_bdd = pairbounds$low_bdd
+  up_bdd = pairbounds$up_bdd
+  dim = dim(cor_mat)[1]
+  prop = matrix(0, dim, dim)
+  for (i in 1:(dim - 1)) {
+    for (j in (i+1): dim) {
+      if (cor_mat[i, j] <= 0) {prop[i,j] = cor_mat[i, j]/low_bdd[i, j]}
+      else{prop[i,j] = cor_mat[i, j]/up_bdd[i, j]}
+    }
+  }
+  prop[upper.tri(prop)]
+}
+
+
+# Validate the correlation matrix
+Validate.Correlation = function(cor_mat, pairbounds){
+  if (!is.positive.semi.definite(cor_mat)) {
+    stop("The correlation matrix is not positive semi-definite!\n")
+  }
+  
+  if (all(cor_mat[upper.tri(cor_mat)] == 0)){
+    stop("No correaltions between any variables!\n")
+  }
+  
+  low_bdd = pairbounds$low_bdd
+  up_bdd = pairbounds$up_bdd
+  
+  for (i in 1:(nrow(cor_mat) - 1)) {
+    for (j in (i + 1):nrow(cor_mat)) {
+      if (cor_mat[i, j] > up_bdd[i, j] || cor_mat[i, j] < low_bdd[i, j]) {
+        err = paste(c("correlation between variables ", as.character(i),
+                      " and ", as.character(j)," should be between ",
+                      as.character(round(low_bdd[i, j], 4)), " and ", as.character(round(up_bdd[i, j], 4)),
+                      " (Demirtas-Hedeker Bounds)"), collapse = "")
+        stop(err)
+      }
+    }
+  }
+}
+
+
+# Fix first two correlation (1,2) and (1, 3) -> calculate the correlation for the third one (2, 3)
+Check.TriBounds = function(cor, pv, low_bdd, up_bdd, ord = c(1,2,3), output = F){
+  a = min(pv[1], pv[2])
+  b = max(pv[1], pv[2])
+  c = low_bdd[3]
+  d = up_bdd[3]
+  
+  if (cor[1]*cor[2] > 0) {
+    low = min(c( ((1 - b)*c + a*d), (1 - a - b)*c))
+    up = (1 - b)*d + a*d
+  } else{
+    low = (1 - b)*c + a*c
+    up = max(c( ((1 - b)*d + a*c), (1 - a - b)*d))
+  }
+  bdd = c(low, up)
+  
+  err = paste(c("Correlation between last two variables should be between ",
+                as.character(round(bdd[1], 4)), " and ",as.character(round(bdd[2], 4)),
+                " in the sequence ", paste(as.character(ord), collapse = ",")), collapse = "")
+  if (cor[3] > bdd[2] || cor[3] < bdd[1]) {
+    stop(err)
+  }
+  if (output) {return(bdd)}
+}
+
+# Function 1 to generate data
+# The input order of variables does not matter
+# Will reorder the variables according to their pair sorted proportion
+# Maximize the bounds this algorithm can achieve
+
+GenCorData = function(n, lst, cor_mat) {
+  
+  if (!(length(lst) == 2 || length(lst) == 3)) {
+    stop("This sorting method only can be applied to 2 or 3 variables")
+  }
+  
+  if (!nrow(cor_mat) == length(lst)) {
+    stop("Dimension of correlation matrix does not match the number of variables! \n")
+  }
+  
+  # First compute bounds for each pair of variables
+  pairbounds = Compute.PairBounds(lst)
+  
+  # Check whether the correlation is within bounds and psd/exist correaltion
+  Validate.Correlation(cor_mat, pairbounds)
+  
+  # Calculte the sorted proportion
+  prop_vec = Compute.SortProp(cor_mat, pairbounds)
+  
+  # Two variable cases
+  if (length(lst) == 2) {
+    n_sort = floor(n*prop_vec)
+    sim = sapply(lst, function(a){a(n)})
+    if (cor_mat[upper.tri(cor_mat)] > 0) {
+      sim[, 1][1:n_sort] = sort(sim[, 1][1:n_sort])
+      sim[, 2][1:n_sort] = sort(sim[, 1][1:n_sort])
+    } else{
+      sim[, 1][1:n_sort] = sort(sim[, 1][1:n_sort])
+      sim[, 2][1:n_sort] = rev(sort(sim[, 1][1:n_sort]))
+    }
+  }
+  
+  # Three variables cases
+  if (length(lst) == 3) {
+    low_bdd = pairbounds$low_bdd
+    up_bdd = pairbounds$up_bdd
+    name = NULL
+    upbdd_vec = NULL
+    lowbdd_vec = NULL
+    for (i in 1:(nrow(cor_mat) - 1)) {
+      for (j in (i + 1):nrow(cor_mat)) {
+        name = rbind(name, c(i, j))
+        lowbdd_vec = c(lowbdd_vec, low_bdd[i,j])
+        upbdd_vec = c(upbdd_vec, up_bdd[i,j])
+      }
+    }
+    # Order the proportion
+    r = order(prop_vec)
+    # Sorted proportion
+    srt_pv = prop_vec[r]
+    # Corresponding sorted name
+    srt_name = name[r, ]
+    # Decide which variable to sort first
+    ord = name_to_order(srt_name)
+    # Order the variable
+    srt_lst = lst[ord]
+    # Order the bounds
+    srt_low_bdd = lowbdd_vec[r]
+    srt_up_bdd = upbdd_vec[r]
+    # Decide the order of variable
+    ord = name_to_order(srt_name)
+    # Correlation need to sort in order
+    srt_cor = sapply(1:length(ord), function(i){cor_mat[srt_name[i, 1], srt_name[i, 2]]})
+    # Check.TriBounds
+    Check.TriBounds(srt_cor, srt_pv, srt_low_bdd, srt_up_bdd, ord)
+    # Order the variable
+    srt_lst = lst[ord]
+    
+    # Generate RVs
+    sim = sapply(srt_lst, function(a){a(n)})
+    
+    s1 = srt_cor[1]*srt_cor[2] > 0
+    s2 = srt_cor[3] < 0
+    s3 = abs(srt_low_bdd[3]) < srt_up_bdd[3]
+    
+    n1 = floor(srt_pv[1]*n)
+    n2 = floor(srt_pv[2]*n)
+    
+    if (all(s1,s2,s3) || all(!s1, !s2, !s3)) {
+      print("Sort without overlap")
+      n3 = floor(srt_pv[3]*n)
+      sim[, 2] = Rank.Sort(sim[, 1], sim[, 2], 1:n1, srt_cor[1])
+      sim[, 3] = Rank.Sort(sim[, 1], sim[, 3], (n1 + 1):(n1 + n2), srt_cor[2])
+      sim[, 3] = Rank.Sort(sim[, 2], sim[, 3], (n1 + n2 + 1):(n1 + n2+ n3), srt_cor[3])
+    }else{
+      print("Sort with overlap")
+      # The remain correaltion need to achieve for the last one
+      rem = srt_cor[3] - srt_pv[1]*ifelse((srt_cor[1]*srt_cor[2] > 0), srt_up_bdd[3], srt_low_bdd[3])
+      n3 = ifelse(rem >= 0, floor(n*(rem/srt_up_bdd[3])), floor(n*(rem/srt_low_bdd[3])))
+      sim[, 2] = Rank.Sort(sim[, 1], sim[, 2], (1:n1), srt_cor[1])
+      sim[, 3] = Rank.Sort(sim[, 1], sim[, 3], 1:n2, srt_cor[2])
+      sim[, 3] = Rank.Sort(sim[, 2], sim[, 3], (n2 + 1):(n2 + n3), rem)
+    }
+    
+  }
+  
+  colnames(sim) = as.character(ord)
+  sim = sim[, order(colnames(sim))]
+  l = list(sim, round(cor(sim),4), round(cor_mat,4))
+  names(l) = c("simulated data", "generated correlation", "real correlation")
+  l
+}
+
+
+#### Get CI for correlation estimates
+# Correlation 95% CI (Fisher Transformation)
+cor.ci.f = function(rho, n.obs){
+  x = 1/2*log((1 + rho)/(1 - rho)) + c(-1.96, 1.96)*sqrt(1/n.obs)
+  (exp(2*x) - 1)/(exp(2*x) + 1)
+}
+
+####-------- Simulation function for correlations ----------####
+# ----- Create a simulation function ------#
+sim.f <- function(n.obs, n.sim, cor_mat, f.lst){
+  est_m <- matrix(nrow=n.sim, ncol=3)
+  cover_m <- matrix(nrow=n.sim, ncol=3)
+  TV = cor_mat[upper.tri(cor_mat)]
+  
+ for (i in 1:n.sim){ 
+   start_time <- Sys.time()
+   a1 = GenCorData(10^4, f.lst, cor_mat)
+est.cor = a1[[2]]
+est.cor.vec=est.cor[upper.tri(est.cor)]
+ci.cor=sapply(est.cor.vec, cor.ci.f, 10^4)
+
+# organize results
+est_m[i, ]=c(est.cor.vec)
+est.ci=as.vector(ci.cor)
+
+# Test whether CI cover TV 
+cover_vec = numeric(3)
+for (j in 1:3) {
+  L = est.ci[2*j - 1]
+  U = est.ci[2*j]
+  if ((TV[j] >= L) && (TV[j] <= U)) {
+    cover_vec[j] = 1
+  }else cover_vec[j] = 0
+}
+cover_m[i, ] = cover_vec
+  
+end_time <- Sys.time()
+t = end_time - start_time
+print(t)
+}
+
+  # Summarize Result
+  AE = apply(est_m, 2, mean)
+  sd = apply(est_m, 2, sd)
+  RB = (AE - TV)*100/TV
+  SB = abs(AE - TV)/sd*100
+  RMSE = sqrt(apply((est_m - TV)^2, 2, mean))
+  CR = apply(cover_m, 2, mean)
+  
+  reuslt_table = data.frame(
+    TV = round(TV,4),
+    AE = round(AE, 4),
+    SD = round(sd, 4),
+    RB = round(RB, 4),
+    SB = round(SB, 4),
+    RMSE = round(RMSE, 4),
+    CR = round(CR, 4)
+  )
+  return(reuslt_table)
+}
+
+##############################################################################
+########################## test performance ##################################
+##############################################################################
+setwd("C:/Users/a4022593/OneDrive - Astellas Pharma Inc/ZZ/Computation statistics/Q1")
+set.seed(20201)
+f1 <- function(n.obs){sample(c(0, 1), n.obs, replace=T, prob=c(.4/.17, .13/.17))} ##binary
+f2 <- function(n.obs){rbinom(n.obs,15,0.65)} ##ordinal
+f3 <- function(n.obs){rpois(n.obs,1)} ##count
+f4 <- function(n.obs){rnorm(n.obs)} ##continous
+
+#####1st
+cor_mat.1 = matrix(c(1,.39,.1, .39, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f1,f3,f4), cor_mat.1)
+#simulation
+b_c_ct_s1=sim.f(10^2, 1000, cor_mat.1, list(f1,f3,f4))
+write.csv(b_c_ct_s1, "b_c_ct_s1.csv")
+
+b_c_ct_s2=sim.f(10^3, 1000, cor_mat.1, list(f1,f3,f4))
+write.csv(b_c_ct_s2, "b_c_ct_s2.csv")
+
+b_c_ct_s3=sim.f(10^4, 1000, cor_mat.1, list(f1,f3,f4))
+write.csv(b_c_ct_s3, "b_c_ct_s3.csv")
+
+####2nd
+cor_mat.2 = matrix(c(1,.25,.1, .25, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f1,f2,f3), cor_mat.2)
+#simulation
+b_o_c_s1=sim.f(10^2, 1000, cor_mat.2, list(f1,f2,f3))
+write.csv(b_o_c_s1, "b_o_c_s1.csv")
+
+b_o_c_s2=sim.f(10^3, 1000, cor_mat.2, list(f1,f2,f3))
+write.csv(b_o_c_s2, "b_o_c_s2.csv")
+
+b_o_c_s3=sim.f(10^4, 1000, cor_mat.2, list(f1,f2,f3))
+write.csv(b_o_c_s3, "b_o_c_s3.csv")
+
+##### 3rd
+cor_mat.2 = matrix(c(1,.25,.1, .25, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f2,f3,f4), cor_mat.2)
+#simulation
+o_c_ct_s1=sim.f(10^2, 1000, cor_mat.2, list(f2,f3,f4))
+write.csv(o_c_ct_s1, "o_c_ct_s1.csv")
+
+o_c_ct_s2=sim.f(10^3, 1000, cor_mat.2, list(f2,f3,f4))
+write.csv(o_c_ct_s2, "o_c_ct_s2.csv")
+
+o_c_ct_s3=sim.f(10^4, 1000, cor_mat.2, list(f2,f3,f4))
+write.csv(o_c_ct_s3, "o_c_ct_s3.csv")
+
+
+###### 4th
+cor_mat.2 = matrix(c(1,.25,.1, .25, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f1,f2,f4), cor_mat.2)
+#simulation
+b_o_ct_s1=sim.f(10^2, 1000, cor_mat.2, list(f1,f2,f4))
+write.csv(b_o_ct_s1, "b_o_ct_s1.csv")
+
+b_o_ct_s2=sim.f(10^3, 1000, cor_mat.2, list(f1,f2,f4))
+write.csv(b_o_ct_s2, "b_o_ct_s2.csv")
+
+b_o_ct_s3=sim.f(10^4, 1000, cor_mat.2, list(f1,f2,f4))
+write.csv(b_o_ct_s3, "b_o_ct_s3.csv")

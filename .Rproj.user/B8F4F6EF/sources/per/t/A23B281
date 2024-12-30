@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1609109622387.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "731757013",
+    "id" : "A23B281",
+    "lastKnownWriteTime" : 1606158247,
+    "last_content_update" : 1606158247,
+    "path" : "~/Desktop/UIC/Computational Statistics/Q5/Q5_code.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "62,4",
+        "scrollLine" : "58"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

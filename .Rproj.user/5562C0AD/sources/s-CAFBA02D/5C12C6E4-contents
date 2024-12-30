@@ -1,0 +1,149 @@
+FinalV1 <- read.csv("C:/Users/User.SPH-DO-1132L27/Box/back up/UIC TA & RA/Fall 2020/work_with_Minhaj/FinalV2_Soumya.csv")
+
+missing_cols <- apply(FinalV1, 2, function(x){sum(is.na(x))})
+colnames(FinalV1)[missing_cols > 0]
+missing_rows <- apply(FinalV1, 1, function(x){sum(is.na(x))})
+#data <- FinalV1[missing_rows == 0, ]
+FinalV1[is.na(FinalV1)] <- 0
+
+#data$id <- sapply(data$?..Labels.for.each.frame, function(x){paste(strsplit(x, "")[[1]][1:52], collapse = "")})
+
+#for(i in unique(data$id)){
+#  data[data$id == i, "annot_ids"] <- names(table(data[data$id == i, "annot_ids"]))[1]
+#}
+
+#data <- data[-2660, ]
+
+table(data$final_diagnoses)
+table(data$Annot_IDs)
+tapply(data$final_diagnoses, data$Annot_IDs, table)
+
+#final_data <- data[, c(2:3, 5:226)]
+#final_data[, "Area"] <- log(final_data$Area)
+#final_data[, "CI"] <- log(final_data$CI)
+
+#for(i in 3:224){
+#  final_data[, i] <- scale(final_data[, i], center = F)
+#}
+
+#final_data[, "annot_ids"] <- as.factor(final_data$annot_ids)
+
+#xnam <- paste0("F", 1:219)
+#(fmla <- as.formula(paste("final_diagnoses ~ Area + CI + ", paste(xnam, collapse= "+ "))))
+
+#library(glmmLasso)
+#lm <- glmmLasso(fmla, 
+#                rnd = list(annot_ids = ~ 1), family = binomial(), data = final_data,
+#                lambda = 1, final.re = T, switch.NR = T)
+
+#--------------------------------------------------------
+
+# Random effect modeling with LASSO constraint considering all image-features
+
+library(glmmLasso)
+
+data[, "Annot_IDs"] <- as.factor(data$Annot_IDs)
+data[, "Area"] <- log(data$Area)
+data[, "CI"] <- log(data$CI)
+
+for(i in 5:109){
+  data[, i] <- scale(data[, i])
+}
+
+
+test_indx <- data[data$foldNum == 4, c(2:3, 5:109)]
+training_indx <- data[data$foldNum != 4, c(2:3, 5:109)]
+
+xnam <- paste("F", c(1:34, 51:91, 220:246), sep="")
+fmla <- as.formula(paste("final_diagnoses ~ Area + CI + ", paste(xnam, collapse= "+")))
+
+lm <- glmmLasso(fmla, 
+                rnd = list(Annot_IDs = ~ 1), family = binomial(), data = training_indx,
+                lambda = .1)
+
+
+
+#t(table(test_indx$final_diagnoses, sapply(predict(lm, newdata = test_indx), function(x){sum(x>.16)})))
+
+library(pROC)
+
+(r1 <- roc(response = training_indx$final_diagnoses, predictor = as.vector(lm$fitted.values)))
+(r2 <- roc(response = test_indx$final_diagnoses, predictor = predict(lm, newdata = test_indx)))
+
+library(corrplot)
+corrplot(cor(data[, 5:109]))
+
+
+#----------------------
+
+# Finding a subset of image features from factor loading of top 6 principle components
+
+cormat <- cor(data[, 5:109])
+eigen_vals <- eigen(cormat)$values
+eigen_vals[1:6]/105
+plot(eigen_vals/105)
+eigen(cormat)
+
+princ <- prcomp(cormat)
+bestvar <- unique(c(which(abs(princ$x[, 1]) > 3), which(abs(princ$x[, 2]) > 3), which(abs(princ$x[, 3]) > 3), 
+              which(abs(princ$x[, 4]) > 3), which(abs(princ$x[, 5]) > 3), which(abs(princ$x[, 6]) > 3)))
+
+
+# Same random effects modeling
+
+data_updated <- cbind(data[, 1:4], data[, (5:109)[bestvar]])
+
+test_indx <- data_updated[data_updated$foldNum == 4, c(2:3, 5:70)]
+training_indx <- data_updated[data_updated$foldNum != 4, c(2:3, 5:70)]
+
+xnam <- paste(colnames(test_indx[, 3:68]), sep="")
+fmla <- as.formula(paste("final_diagnoses ~ ", paste(xnam, collapse= "+")))
+
+lm <- glmmLasso(fmla, 
+                rnd = list(Annot_IDs = ~ 1), family = binomial(), data = training_indx,
+                lambda = 1, switch.NR=TRUE, control=list(print.iter=TRUE))
+
+
+library(pROC)
+
+(r1 <- roc(response = training_indx$final_diagnoses, predictor = as.vector(lm$fitted.values)))
+(r2 <- roc(response = test_indx$final_diagnoses, predictor = predict(lm, newdata = test_indx)))
+
+roc(response = tapply(test_indx$final_diagnoses, as.vector(test_indx$Annot_IDs), max),
+tapply(predict(lm, newdata = test_indx), as.vector(test_indx$Annot_IDs), median), direction = "<")
+
+#--------------------------------------------------------
+
+#statistics: min, max, mean, q05, q15, q25, q35, q45, q50, q55, q65, q75, q85, q95, var
+
+data <- FinalV1
+
+q05 <- function(x){quantile(x, probs = .05)}
+q15 <- function(x){quantile(x, probs = .15)}
+q25 <- function(x){quantile(x, probs = .25)}
+q35 <- function(x){quantile(x, probs = .35)}
+q45 <- function(x){quantile(x, probs = .45)}
+q55 <- function(x){quantile(x, probs = .55)}
+q65 <- function(x){quantile(x, probs = .65)}
+q75 <- function(x){quantile(x, probs = .75)}
+q85 <- function(x){quantile(x, probs = .85)}
+q95 <- function(x){quantile(x, probs = .95)}
+rng <- function(x){max(x) - min(x)}
+
+compare <- function(x, func){
+  variable <- tapply(data[, x], data$Annot_IDs, func) + runif(192, 0, 10^-10)
+  #variable <- tapply(data[, x], data$Annot_IDs, func)
+  zero_ind <- which(tapply(data$final_diagnoses, data$Annot_IDs, min) == 0)
+  one_ind <- which(tapply(data$final_diagnoses, data$Annot_IDs, min) == 1)
+  ks.test(variable[zero_ind], variable[one_ind])$p.value
+}
+
+cols <- colnames(data)[5:109]
+
+p_val_tab <- sapply(cols, function(y){
+  sapply(list(min, max, mean, q05, q15, q25, q35, q45, median, q55, q65, q75, q85, q95, rng, var), compare, x = y)
+})
+
+rownames(p_val_tab) <- c("min", "max", "mean", "q05", "q15", "q25", "q35", "q45", "q50", "q55", "q65", "q75", "q85", "q95", "range", "var")
+
+write.csv(p_val_tab, "C:\\Users\\User.SPH-DO-1132L27\\Box\\back up\\UIC TA & RA\\Fall 2020\\work_with_Minhaj\\p_val_diff_summary_stat.csv")

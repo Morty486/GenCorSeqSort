@@ -1,0 +1,26 @@
+#' GenCorData Package: Multivariate Nominal and Ordinal data generation with specified Cohen's kappa matrix and marginal probabilities
+#'
+#' The package GenCorSeqSort is employed to generate the mixed data that contains nearly all major types
+#' of variables (i.e., binary, ordinal, count and continuous) from multiple marginal distributions with a
+#' feasible correlation structure and specified correlation values as well. Using the GSC algorithm developed by Demirtas (Demirtas and Hedeker, 2011),
+#' a simple sorting approach for inducing any desired Pearson or Spearman correlation to independent bivariate data (Demirtas, 2019)  in  conjunction
+#' with the marginal distribution specifications and the corresponding association structure, the stochastic simulated data set for bivariate can be generated.
+#' In the trivariate extension, sequential sorting based on the rank of the observations in the first variable is chosen to be the primary mode of sorting.
+#'
+#'
+#' @details
+#' This package include two main functions (GenCorDataBiTri and GenCorDataMulti) and seven help functions.
+#' GenCorDataBiTri generates bivariate or trivariate mixed simulation data given the specified marginal distributions and
+#' correlation structure. GenCorDataMulti generates multivariate (more than three variables) mixed simulation data (n by k)
+#' given the specified marginal distributions and correlation structure.
+#'
+#'
+#' @author Soumya Sahu, Jun Lu, Hajwa Kim, Yanli Gao, Pei-shan Yen, Jieqi Tu, Demirtas Hakan
+#'
+#' @docType package
+#'
+#' @name
+#'  GenCorData-package
+#'
+
+NULL

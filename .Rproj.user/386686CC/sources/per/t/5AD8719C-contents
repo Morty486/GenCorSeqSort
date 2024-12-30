@@ -1,0 +1,129 @@
+library(GenCorSeqSort)
+
+
+####-------- Simulation function for correlations ----------####
+#### Get CI for correlation estimates
+# Correlation 95% CI (Fisher Transformation)
+cor.ci.f = function(rho, n.obs){
+  x = 1/2*log((1 + rho)/(1 - rho)) + c(-1.96, 1.96)*sqrt(1/n.obs)
+  (exp(2*x) - 1)/(exp(2*x) + 1)
+}
+
+# ----- Create a simulation function ------#
+sim.f <- function(n.obs, n.sim, cor_mat, f.lst){
+  est_m <- matrix(nrow=n.sim, ncol=3)
+  cover_m <- matrix(nrow=n.sim, ncol=3)
+  TV = cor_mat[upper.tri(cor_mat)]
+
+  for (i in 1:n.sim){
+    start_time <- Sys.time()
+    a1 = GenCorData(10^4, f.lst, cor_mat)
+    est.cor = a1[[2]]
+    est.cor.vec=est.cor[upper.tri(est.cor)]
+    ci.cor=sapply(est.cor.vec, cor.ci.f, 10^4)
+
+    # organize results
+    est_m[i, ]=c(est.cor.vec)
+    est.ci=as.vector(ci.cor)
+
+    # Test whether CI cover TV
+    cover_vec = numeric(3)
+    for (j in 1:3) {
+      L = est.ci[2*j - 1]
+      U = est.ci[2*j]
+      if ((TV[j] >= L) && (TV[j] <= U)) {
+        cover_vec[j] = 1
+      }else cover_vec[j] = 0
+    }
+    cover_m[i, ] = cover_vec
+
+    end_time <- Sys.time()
+    t = end_time - start_time
+    print(t)
+  }
+
+  # Summarize Result
+  AE = apply(est_m, 2, mean)
+  sd = apply(est_m, 2, sd)
+  RB = (AE - TV)*100/TV
+  SB = abs(AE - TV)/sd*100
+  RMSE = sqrt(apply((est_m - TV)^2, 2, mean))
+  CR = apply(cover_m, 2, mean)
+
+  reuslt_table = data.frame(
+    TV = round(TV,4),
+    AE = round(AE, 4),
+    SD = round(sd, 4),
+    RB = round(RB, 4),
+    SB = round(SB, 4),
+    RMSE = round(RMSE, 4),
+    CR = round(CR, 4)
+  )
+  return(reuslt_table)
+}
+
+
+##############################################################################
+########################## test performance ##################################
+##############################################################################
+setwd("~/Box/GSC_Trivariate/Report/performance_results")
+## Scenario
+set.seed(20201)
+f1 <- function(n.obs){sample(c(0, 1), n.obs, replace=T, prob=c(.4/.17, .13/.17))} ##binary
+f2 <- function(n.obs){rbinom(n.obs,15,0.65)} ##ordinal
+f3 <- function(n.obs){rpois(n.obs,1)} ##count
+f4 <- function(n.obs){rnorm(n.obs)} ##continous
+
+#####1st
+cor_mat.1 = matrix(c(1,.39,.1, .39, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f1,f3,f4), cor_mat.1)
+#simulation
+b_c_ct_s1=sim.f(10^2, 1000, cor_mat.1, list(f1,f3,f4))
+write.csv(b_c_ct_s1, "b_c_ct_s1.csv")
+
+b_c_ct_s2=sim.f(10^3, 1000, cor_mat.1, list(f1,f3,f4))
+write.csv(b_c_ct_s2, "b_c_ct_s2.csv")
+
+b_c_ct_s3=sim.f(10^4, 1000, cor_mat.1, list(f1,f3,f4))
+write.csv(b_c_ct_s3, "b_c_ct_s3.csv")
+
+####2nd
+cor_mat.2 = matrix(c(1,.25,.1, .25, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f1,f2,f3), cor_mat.2)
+#simulation
+b_o_c_s1=sim.f(10^2, 1000, cor_mat.2, list(f1,f2,f3))
+write.csv(b_o_c_s1, "b_o_c_s1.csv")
+
+b_o_c_s2=sim.f(10^3, 1000, cor_mat.2, list(f1,f2,f3))
+write.csv(b_o_c_s2, "b_o_c_s2.csv")
+
+b_o_c_s3=sim.f(10^4, 1000, cor_mat.2, list(f1,f2,f3))
+write.csv(b_o_c_s3, "b_o_c_s3.csv")
+
+##### 3rd
+cor_mat.2 = matrix(c(1,.25,.1, .25, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f2,f3,f4), cor_mat.2)
+#simulation
+o_c_ct_s1=sim.f(10^2, 1000, cor_mat.2, list(f2,f3,f4))
+write.csv(o_c_ct_s1, "o_c_ct_s1.csv")
+
+o_c_ct_s2=sim.f(10^3, 1000, cor_mat.2, list(f2,f3,f4))
+write.csv(o_c_ct_s2, "o_c_ct_s2.csv")
+
+o_c_ct_s3=sim.f(10^4, 1000, cor_mat.2, list(f2,f3,f4))
+write.csv(o_c_ct_s3, "o_c_ct_s3.csv")
+
+
+###### 4th
+cor_mat.2 = matrix(c(1,.25,.1, .25, 1, -.34, .1, -.34, 1), nrow = 3)
+GenCorData(10^4, list(f1,f2,f4), cor_mat.2)
+#simulation
+b_o_ct_s1=sim.f(10^2, 1000, cor_mat.2, list(f1,f2,f4))
+write.csv(b_o_ct_s1, "b_o_ct_s1.csv")
+
+b_o_ct_s2=sim.f(10^3, 1000, cor_mat.2, list(f1,f2,f4))
+write.csv(b_o_ct_s2, "b_o_ct_s2.csv")
+
+b_o_ct_s3=sim.f(10^4, 1000, cor_mat.2, list(f1,f2,f4))
+write.csv(b_o_ct_s3, "b_o_ct_s3.csv")
+

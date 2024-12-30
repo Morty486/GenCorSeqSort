@@ -1,0 +1,5 @@
+
+f1 = function(n){rnorm(n)}
+f2 = function(n){rpois(n,1)}
+f3 = function(n){rbinom(n,10,0.5)}
+
